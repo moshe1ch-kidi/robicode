@@ -18,13 +18,12 @@
       /* Custom scrollbar for blockly */
       .blocklyToolboxDiv {
         background-color: #ffffff;
-        border-right: 1px solid #e5e7eb; /* Changed to border-right for LTR */
+        border-right: 1px solid #e5e7eb;
         padding-top: 10px;
       }
 
       /* --- Toolbox Category Styling --- */
       
-      /* Increase row height and stack content vertically */
       .blocklyTreeRow {
         height: auto !important;
         min-height: 70px;
@@ -36,7 +35,6 @@
         align-items: center;
       }
 
-      /* Center the text and the icon container */
       .blocklyTreeRowContentContainer {
         display: flex !important;
         flex-direction: column;
@@ -45,7 +43,6 @@
         width: 100%;
       }
 
-      /* Style the text label */
       .blocklyTreeLabel {
         font-family: 'Rubik', sans-serif;
         font-weight: 700;
@@ -56,12 +53,10 @@
         text-align: center;
       }
 
-      /* Hide the default color strip/icon (optional, looks cleaner without it when we have big icons) */
       .blocklyTreeIcon {
         display: none !important;
       }
 
-      /* Icon container (Using ::after) */
       .blocklyTreeRowContentContainer::after {
         content: '';
         display: block;
@@ -75,37 +70,37 @@
 
       /* --- Specific Icons per Category (SVG Data URIs) --- */
       
-      /* Motion (Blue) - Arrow/Move Icon */
+      /* Motion (Blue) */
       .category-motion .blocklyTreeLabel { color: #4C97FF; }
       .category-motion .blocklyTreeRowContentContainer::after {
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%234C97FF' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 9l7-7 7 7'/%3E%3Cpath d='M12 2v20'/%3E%3C/svg%3E");
       }
 
-      /* Looks (Purple) - Lightbulb/Eye Icon */
+      /* Looks (Purple) */
       .category-looks .blocklyTreeLabel { color: #9966FF; }
       .category-looks .blocklyTreeRowContentContainer::after {
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%239966FF' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 14c.2-1 .7-1.7 1.5-2.5 1-1 1.5-2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5'/%3E%3Cpath d='M9 18h6'/%3E%3Cpath d='M10 22h4'/%3E%3C/svg%3E");
       }
       
-      /* Events (Yellow/Gold) - Flag Icon */
+      /* Events (Yellow/Gold) */
       .category-events .blocklyTreeLabel { color: #FFBF00; }
       .category-events .blocklyTreeRowContentContainer::after {
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23FFBF00' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z'/%3E%3Cline x1='4' y1='22' x2='4' y2='15'/%3E%3C/svg%3E");
       }
 
-      /* Control (Orange) - Repeat/Loop Icon */
+      /* Control (Orange) */
       .category-control .blocklyTreeLabel { color: #FFAB19; }
       .category-control .blocklyTreeRowContentContainer::after {
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23FFAB19' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m17 2 4 4-4 4'/%3E%3Cpath d='M3 11v-1a4 4 0 0 1 4-4h14'/%3E%3Cpath d='m7 22-4-4 4-4'/%3E%3Cpath d='M21 13v1a4 4 0 0 1-4 4H3'/%3E%3C/svg%3E");
       }
       
-      /* Sensors (Cyan) - Wifi/Target Icon */
+      /* Sensors (Cyan) */
       .category-sensors .blocklyTreeLabel { color: #00C7E5; }
       .category-sensors .blocklyTreeRowContentContainer::after {
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2300C7E5' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 2a10 10 0 1 0 10 10 10 10 0 0 0-10-10zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z'/%3E%3Cpath d='M12 8a4 4 0 1 0 4 4 4 4 0 0 0-4-4z'/%3E%3C/svg%3E");
       }
 
-      /* Logic (Green) - Branch/Shuffle Icon */
+      /* Logic (Green) */
       .category-logic .blocklyTreeLabel { color: #59C059; }
       .category-logic .blocklyTreeRowContentContainer::after {
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2359C059' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='18' height='18' rx='2' ry='2'/%3E%3Cpath d='M9 3v18'/%3E%3Cpath d='M14 9h7'/%3E%3Cpath d='M14 15h7'/%3E%3C/svg%3E");
@@ -122,7 +117,6 @@
     <script src="https://unpkg.com/blockly@10.4.3/blockly_compressed.js"></script>
     <script src="https://unpkg.com/blockly@10.4.3/blocks_compressed.js"></script>
     <script src="https://unpkg.com/blockly@10.4.3/javascript_compressed.js"></script>
-    <!-- Loaded English locale instead of Hebrew -->
     <script src="https://unpkg.com/blockly@10.4.3/msg/en.js"></script>
 <script type="importmap">
 {
@@ -142,6 +136,7 @@
 </head>
   <body>
     <div id="root"></div>
+    <!-- IMPORTANT: Changed src to "./index.tsx" (relative) to fix 404 error -->
     <script type="module" src="./index.tsx"></script>
   </body>
 </html>
