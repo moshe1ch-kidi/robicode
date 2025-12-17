@@ -15,96 +15,129 @@ import { CHALLENGES, Challenge, SimulationHistory } from './data/challenges';
 // Constants for simulation
 const SPEED_MULTIPLIER = 0.05; // Visual speed
 
-// Custom Cursor SVG (Pink Pipette) - Hotspot at bottom left (0, 24)
+// Custom Cursor SVG (Pink Pipette)
 const DROPPER_CURSOR_URL = `url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNlYzQ4OTkiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMiAyMmw1LTUiLz48cGF0aCBkPSJNMTUuNTQgOC40NmE1IDUgMCAxIDAtNy4wNyA3LjA3bDEuNDEgMS40MWEyIDIgMCAwIDAgMi44MyAwbDIuODMtMi44M2EyIDIgMCAwIDAgMC0yLjgzbC0xLjQxLTEuNDF6Ii8+PC9zdmc+') 0 24, crosshair`;
 
-// --- COLOR CALCULATION LOGIC ---
-const getDecimalColorAtPosition = (x: number, z: number) => {
-    const centerX = 5;
-    const centerZ = 5;
+// --- ENVIRONMENT & SENSOR LOGIC ---
+// We move this logic into a helper that can take the current Challenge config
+const getEnvironmentConfig = (challengeId?: string) => {
+    // 1. WALL CONFIGURATION
+    let wall = { minX: -5.5, maxX: -4.5, minZ: -15, maxZ: 15 }; // Default Side Wall
     
-    const dx = x - centerX;
-    const dz = z - centerZ;
-    const distFromRingCenter = Math.sqrt(dx*dx + dz*dz);
-    
-    // Ring geometry args are [4, 5, 64]
-    if (distFromRingCenter >= 4 && distFromRingCenter <= 5) {
-        return 0; // Black #000000
-    }
-    
-    // Wall Base (Black)
-    if (x >= -6 && x <= -4 && z >= 0 && z <= 10) {
-        return 0; // Black #000000
+    // Challenges where wall moves to front
+    if (['c9', 'c14', 'c15', 'c16', 'c19', 'c20'].includes(challengeId || '')) {
+         // Wall is approx 4 units wide, centered at (0, -8). Depth 1.
+         // Bounds: X[-2, 2], Z[-8.5, -7.5]
+         wall = { minX: -2, maxX: 2, minZ: -8.5, maxZ: -7.5 };
     }
 
-    // Floor Color (#f0f0f0)
-    return 15790320; 
+    // 2. COLOR ZONES (Mat configuration)
+    let colorZones: {minX: number, maxX: number, minZ: number, maxZ: number, color: number}[] = [];
+    
+    if (['c13', 'c14'].includes(challengeId || '')) {
+         // Blue Mat: centered at (2.5, -3) size 2x2 -> X[1.5, 3.5], Z[-4, -2]
+         colorZones.push({ minX: 1.5, maxX: 3.5, minZ: -4, maxZ: -2, color: 0x0000FF });
+         // Red Mat: centered at (-2.5, -3) size 2x2 -> X[-3.5, -1.5], Z[-4, -2]
+         colorZones.push({ minX: -3.5, maxX: -1.5, minZ: -4, maxZ: -2, color: 0xFF0000 });
+    }
+
+    return { wall, colorZones };
 };
 
-// --- SIMULATION LOGIC ---
-const calculateSensorReadings = (x: number, z: number, rotation: number) => {
+const calculateSensorReadings = (x: number, z: number, rotation: number, challengeId?: string) => {
     const rad = (rotation * Math.PI) / 180;
     const sin = Math.sin(rad);
     const cos = Math.cos(rad);
+    
+    const env = getEnvironmentConfig(challengeId);
 
     // 1. Gyro
     const gyro = Math.round(rotation % 360);
 
-    // 2. Touch Sensor
-    // Sensor Tip is at z=1.6 relative to center (Updated from 1.3 to match visual tip)
-    // We calculate the world position of the sensor tip
+    // 2. Touch Sensor (Tip at 1.6 from center)
     const touchSensorX = x + sin * 1.6;
     const touchSensorZ = z + cos * 1.6;
     
-    // Wall is defined at X [-5.5, -4.5] (Center -5, Width 1). Z is approx infinite ([-15, 15] in visual)
-    const wallMinX = -5.5;
-    const wallMaxX = -4.5;
-    const wallMinZ = -15;
-    const wallMaxZ = 15;
-
-    // Check if sensor tip is inside the wall volume
     const isTouching = (
-        touchSensorX >= wallMinX && 
-        touchSensorX <= wallMaxX && 
-        touchSensorZ >= wallMinZ && 
-        touchSensorZ <= wallMaxZ
+        touchSensorX >= env.wall.minX && 
+        touchSensorX <= env.wall.maxX && 
+        touchSensorZ >= env.wall.minZ && 
+        touchSensorZ <= env.wall.maxZ
     );
 
-    // 3. Distance (Ultrasonic)
-    // Sensor is at z=1.05 relative to center
+    // 3. Distance (Ultrasonic) (Tip at 1.05)
     const usSensorX = x + sin * 1.05;
     const usSensorZ = z + cos * 1.05;
     
     let distance = 255;
     
-    // Raycasting for the Wall at X = -4.5 (The face of the wall)
-    // If we are facing somewhat Left (sin < -0.1), we might see the wall
-    if (sin < -0.1) { 
-        // Ray Equation: P = Origin + t * Dir
-        // Wall Plane: x = -4.5
-        // -4.5 = usSensorX + t * sin  =>  t = (-4.5 - usSensorX) / sin
-        const t = (-4.5 - usSensorX) / sin;
+    // Raycasting Logic
+    // We simplify: Check intersection with the 4 bounding lines of the wall box
+    // Or easier: Iterate step by step up to max range (25.5 units = 255cm)
+    // Ray step size: 0.1 units (1cm)
+    
+    for(let d = 0; d < 25.5; d += 0.5) {
+        const testX = usSensorX + sin * d;
+        const testZ = usSensorZ + cos * d;
         
-        if (t > 0) {
-            // Calculate Z at intersection to see if we actually hit the wall geometry
-            const intersectZ = usSensorZ + t * cos;
-            if (intersectZ >= wallMinZ && intersectZ <= wallMaxZ) {
-                // t is in simulation units. 1 unit ~ 10cm.
-                const distCm = t * 10; 
-                if (distCm < 255) distance = Math.round(distCm);
-            }
+        if (
+            testX >= env.wall.minX && 
+            testX <= env.wall.maxX && 
+            testZ >= env.wall.minZ && 
+            testZ <= env.wall.maxZ
+        ) {
+            distance = Math.round(d * 10);
+            break;
         }
     }
 
-    // 4. Color Sensor
-    // Sensor is at z=0.8 relative to center
+    // 4. Color Sensor (Tip at 0.8)
     const colorSensorX = x + sin * 0.8;
     const colorSensorZ = z + cos * 0.8;
 
-    const rawDecimalColor = getDecimalColorAtPosition(colorSensorX, colorSensorZ);
+    let rawDecimalColor = 15790320; // Default floor #f0f0f0
+    
+    // Check Ring (Default)
+    const distFromCenter = Math.sqrt(Math.pow(colorSensorX - 5, 2) + Math.pow(colorSensorZ - 5, 2));
+    if (distFromCenter >= 4 && distFromCenter <= 5) {
+        rawDecimalColor = 0; // Black Ring
+    }
+    
+    // Check Line Follower Track (Only if c21)
+    if (challengeId === 'c21') {
+        // Track is circle centered at (-6, 0) with radius approx 6 (inner 5.8, outer 6.2)
+        const distFromTrackCenter = Math.sqrt(Math.pow(colorSensorX - (-6), 2) + Math.pow(colorSensorZ - 0, 2));
+        if (distFromTrackCenter >= 5.8 && distFromTrackCenter <= 6.2) {
+            rawDecimalColor = 0; // Black Line
+        }
+    }
+    
+    // Check Custom Color Zones (Mats)
+    for (const zone of env.colorZones) {
+        if (colorSensorX >= zone.minX && colorSensorX <= zone.maxX && colorSensorZ >= zone.minZ && colorSensorZ <= zone.maxZ) {
+            rawDecimalColor = zone.color;
+            break;
+        }
+    }
+    
+    // Check Wall Base
+    if (colorSensorX >= env.wall.minX && colorSensorX <= env.wall.maxX && colorSensorZ >= env.wall.minZ && colorSensorZ <= env.wall.maxZ) {
+        // rawDecimalColor = 0; 
+    }
+
     const isDark = rawDecimalColor < 100000;
+    // Determine named color
+    let color = "white";
+    if (rawDecimalColor < 10000) color = "black";
+    else if (rawDecimalColor > 16700000) color = "red"; // Rough Red
+    else if (rawDecimalColor < 300 && rawDecimalColor > 0) color = "blue"; // Rough Blue (0x0000FF = 255)
+    
+    // Improved Color Name mapping
+    const hex = rawDecimalColor.toString(16).padStart(6, '0');
+    if (hex === 'ff0000') color = 'red';
+    if (hex === '0000ff') color = 'blue';
+
     const intensity = isDark ? 5 : 100;
-    const color = isDark ? "black" : "white";
 
     return { gyro, isTouching, distance, color, intensity, rawDecimalColor };
 };
@@ -158,11 +191,9 @@ const App: React.FC = () => {
 
     // Color Picker
     window.showBlocklyColorPicker = (onPick) => {
-        // Activate the 3D tool
         setIsColorPickerActive(true);
-        setIsRulerActive(false); // Disable other tools
+        setIsRulerActive(false); 
         setPickerHoverColor(null);
-        // Store callback
         blocklyColorCallbackRef.current = onPick;
     };
   }, []);
@@ -181,11 +212,15 @@ const App: React.FC = () => {
   const [robotState, setRobotState] = useState<RobotState>(initialState);
   const robotRef = useRef(initialState);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const startStateRef = useRef(initialState); // Track start for challenges
+  const startStateRef = useRef(initialState);
+
+  // Active Challenge ID Ref to access inside closures without dependency hell
+  const activeChallengeIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => { activeChallengeIdRef.current = activeChallenge?.id; }, [activeChallenge]);
 
   const sensorReadings = useMemo(() => {
-    return calculateSensorReadings(robotState.x, robotState.z, robotState.rotation);
-  }, [robotState.x, robotState.z, robotState.rotation]);
+    return calculateSensorReadings(robotState.x, robotState.z, robotState.rotation, activeChallenge?.id);
+  }, [robotState.x, robotState.z, robotState.rotation, activeChallenge]);
 
   const updateRobotState = (newState: Partial<RobotState>) => {
     const updated = { ...robotRef.current, ...newState };
@@ -293,13 +328,13 @@ const App: React.FC = () => {
       getDistance: async () => {
          checkAbort();
          const { x, z, rotation } = robotRef.current;
-         return calculateSensorReadings(x, z, rotation).distance;
+         return calculateSensorReadings(x, z, rotation, activeChallengeIdRef.current).distance;
       },
 
       getTouch: async () => {
           checkAbort();
           const { x, z, rotation } = robotRef.current;
-          const val = calculateSensorReadings(x, z, rotation).isTouching;
+          const val = calculateSensorReadings(x, z, rotation, activeChallengeIdRef.current).isTouching;
           if (val) historyRef.current.touchedWall = true;
           return val;
       },
@@ -307,13 +342,13 @@ const App: React.FC = () => {
       getGyro: async () => {
           checkAbort();
           const { x, z, rotation } = robotRef.current;
-          return calculateSensorReadings(x, z, rotation).gyro;
+          return calculateSensorReadings(x, z, rotation, activeChallengeIdRef.current).gyro;
       },
 
       getColor: async () => {
           checkAbort();
           const { x, z, rotation } = robotRef.current;
-          const val = calculateSensorReadings(x, z, rotation).color;
+          const val = calculateSensorReadings(x, z, rotation, activeChallengeIdRef.current).color;
           if (!historyRef.current.detectedColors.includes(val)) {
               historyRef.current.detectedColors.push(val);
           }
@@ -323,7 +358,7 @@ const App: React.FC = () => {
       isTouchingColor: async (targetHex: string) => {
           checkAbort();
           const { x, z, rotation } = robotRef.current;
-          const { rawDecimalColor } = calculateSensorReadings(x, z, rotation);
+          const { rawDecimalColor } = calculateSensorReadings(x, z, rotation, activeChallengeIdRef.current);
           
           const currentHex = "#" + rawDecimalColor.toString(16).toUpperCase().padStart(6, '0');
           const target = targetHex.toUpperCase();
@@ -348,7 +383,6 @@ const App: React.FC = () => {
     setIsRunning(true);
     setChallengeSuccess(false);
     
-    // Reset History for this run
     historyRef.current = {
         maxDistanceMoved: 0,
         touchedWall: false,
@@ -366,7 +400,6 @@ const App: React.FC = () => {
       const runFunc = new Function('robot', `return (async () => { ${generatedCode} })();`);
       await runFunc(robot);
       
-      // Check Challenge Success ONLY after normal completion
       if (activeChallenge) {
           const success = activeChallenge.check(startStateRef.current, robotRef.current, historyRef.current);
           if (success) {
@@ -391,12 +424,11 @@ const App: React.FC = () => {
     setChallengeSuccess(false);
   };
 
-  // Tool Toggle Handlers
   const toggleRuler = () => {
       setIsRulerActive(!isRulerActive);
       if (!isRulerActive) {
           setIsColorPickerActive(false); 
-          blocklyColorCallbackRef.current = null; // Clear callback if manually closing
+          blocklyColorCallbackRef.current = null;
       }
       setPickerHoverColor(null);
   };
@@ -405,27 +437,20 @@ const App: React.FC = () => {
       setIsColorPickerActive(!isColorPickerActive);
       if (!isColorPickerActive) {
           setIsRulerActive(false); 
-          // If manually opened via dashboard, we don't have a block callback
           blocklyColorCallbackRef.current = null;
       }
       setPickerHoverColor(null);
   };
 
-  // Handler when user clicks on 3D floor with picker
   const handleColorPicked = (hex: string) => {
       setPickerHoverColor(hex);
       setIsColorPickerActive(false);
       
-      // If this pick was initiated by a Blockly block, send the value back
       if (blocklyColorCallbackRef.current) {
           blocklyColorCallbackRef.current(hex);
           blocklyColorCallbackRef.current = null;
       }
-      
-      // Also copy to clipboard for good measure
-      navigator.clipboard.writeText(hex).then(() => {
-         console.log('Color copied:', hex);
-      }).catch(err => console.error('Clipboard failed', err));
+      navigator.clipboard.writeText(hex);
   };
   
   const handleEvalCode = useCallback(async (codeSnippet: string) => {
@@ -437,7 +462,6 @@ const App: React.FC = () => {
           const result = await runFunc(robot);
           return result;
       } catch (e) {
-          console.error("Eval error", e);
           return "Error";
       }
   }, []);
@@ -445,7 +469,7 @@ const App: React.FC = () => {
   const selectChallenge = (c: Challenge) => {
       setActiveChallenge(c);
       setShowChallenges(false);
-      handleReset(); // Reset robot to start fresh
+      handleReset();
   };
 
   return (
@@ -458,7 +482,6 @@ const App: React.FC = () => {
         </div>
         
         <div className="flex items-center gap-4">
-             {/* Challenge Button */}
              <button 
                 onClick={() => setShowChallenges(true)}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-bold transition-colors ${
@@ -559,7 +582,7 @@ const App: React.FC = () => {
             />
 
             <Canvas shadows camera={{ position: [5, 8, 8], fov: 45 }}>
-                <SimulationEnvironment />
+                <SimulationEnvironment challengeId={activeChallenge?.id} />
                 <Robot3D state={robotState} />
                 
                 {/* Tools */}
